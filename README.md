@@ -1,12 +1,14 @@
 # easynav_nav2_bridge
 
+[![rolling](https://github.com/EasyNavigation/easynav_nav2_bridge/actions/workflows/rolling.yaml/badge.svg?branch=rolling)](https://github.com/EasyNavigation/easynav_nav2_bridge/actions/workflows/rolling.yaml)
+
 A drop-in `nav2_msgs/action/NavigateToPose` action server backed by **EasyNav**.
 
 It lets any Nav2-compatible client — RViz's "2D Nav Goal", the Nav2 simple
 commander, a BehaviorTree `NavigateToPose` node, `ros2 action send_goal`, etc. —
 drive EasyNav without knowing it isn't talking to Nav2's `bt_navigator`. The
 bridge forwards the goal to EasyNav through an
-[`easynav::GoalManagerClient`](../easynav_system/include/easynav_system/GoalManagerClient.hpp)
+[`easynav::GoalManagerClient`](https://github.com/EasyNavigation/EasyNavigation/blob/rolling/easynav_system/include/easynav_system/GoalManagerClient.hpp)
 and translates EasyNav's feedback and result back into the Nav2 action's
 feedback and result.
 
@@ -79,6 +81,18 @@ callback — the same timer-driven pattern used by other EasyNav clients (see
   point of view it never asked to cancel, so reporting `CANCELED` would be
   a protocol violation (and is in fact illegal at the `rclcpp_action` state
   machine level unless a cancel was actually requested).
+
+## Building
+
+This package depends on `easynav_system` (and the rest of the
+[EasyNavigation](https://github.com/EasyNavigation/EasyNavigation) core
+packages), plus `nav2_msgs`. In a workspace where those aren't already
+available, checkout `EasyNavigation` as a sibling under `src/` (and, since
+some distros don't ship `nav2_msgs` as a standalone package, the
+[`nav2_msgs_only`](https://github.com/fmrico/navigation2/tree/nav2_msgs_only)
+branch) before running `colcon build` — see
+[`.github/thirdparty.repos`](.github/thirdparty.repos) for the exact sources
+CI pulls in.
 
 ## Tests
 

@@ -1,0 +1,13 @@
+repositories:
+  EasyNavigation:
+    type: git
+    url: https://github.com/EasyNavigation/EasyNavigation.git
+    version: rolling
+  ThirdParty/yaets:
+    type: git
+    url: https://github.com/fmrico/yaets.git
+    version: rolling
+  ThirdParty/nav2_msgs:
+    type: git
+    url: https://github.com/fmrico/navigation2.git
+    version: nav2_msgs_only
