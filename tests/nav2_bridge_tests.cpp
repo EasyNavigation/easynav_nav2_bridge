@@ -71,19 +71,26 @@ make_goal_pose(double x)
 class Nav2BridgeTestCase : public ::testing::Test
 {
 protected:
-  ~Nav2BridgeTestCase() override
+  // rclcpp::init()/shutdown() run exactly once for the whole suite rather
+  // than once per test: repeatedly tearing down and recreating the context
+  // in the same process, with a NavigateToPose action server/client having
+  // existed in it, reliably hangs the *next* rclcpp::init() (reproduced both
+  // locally and in CI) — action server/client DDS entities apparently don't
+  // tolerate that cycle as cleanly as plain pub/sub does. Nodes/clients are
+  // still fully created and destroyed per test in SetUp()/TearDown() below.
+  static void SetUpTestSuite()
+  {
+    rclcpp::init(0, nullptr);
+  }
+
+  static void TearDownTestSuite()
   {
     rclcpp::shutdown();
   }
 
   void SetUp() override
   {
-    if (!initialized) {
-      rclcpp::init(0, nullptr);
-      initialized = true;
-    }
-
-    // Must be created after rclcpp::init(): as a plain member it would be
+    // Must be created here rather than as a plain member: as a plain member it would be
     // default-constructed together with the test fixture itself, i.e. before
     // SetUp() (and therefore before rclcpp::init()) ever runs.
     exe = std::make_unique<rclcpp::executors::SingleThreadedExecutor>();
@@ -91,9 +98,21 @@ protected:
     nav_state = std::make_shared<easynav::NavState>();
     nav_state->set("robot_pose", nav_msgs::msg::Odometry());
 
-    client_node = rclcpp::Node::make_shared("nav2_client_node");
-    bridge = easynav::Nav2Bridge::make_shared();
-    system_node = rclcpp_lifecycle::LifecycleNode::make_shared("system_node");
+    // Namespaced under the test's own name so every topic/service each test's
+    // nodes create (rosout, the control topic, the action's 5 DDS entities...)
+    // is fully distinct from every other test's: reusing the same names
+    // across tests in the same process, right after the previous test tore
+    // its own nodes down, reliably hangs the *next* test's node/action-server
+    // creation (reproduced both locally and in CI) -- the DDS entities from
+    // the previous, same-named node/action apparently don't finish going away
+    // as fast as the C++ objects that owned them do.
+    const std::string ns =
+      std::string("/") + ::testing::UnitTest::GetInstance()->current_test_info()->name();
+
+    client_node = rclcpp::Node::make_shared("nav2_client_node", ns);
+    bridge = easynav::Nav2Bridge::make_shared(
+      rclcpp::NodeOptions().arguments({"--ros-args", "-r", "__ns:=" + ns}));
+    system_node = rclcpp_lifecycle::LifecycleNode::make_shared("system_node", ns);
 
     exe->add_node(client_node);
     exe->add_node(bridge);
@@ -112,6 +131,15 @@ protected:
 
   void TearDown() override
   {
+    // Explicitly release every node/client/executor between tests, ahead of
+    // the fixture's implicit member teardown, so the next test starts from a
+    // clean graph rather than relying on destruction order.
+    action_client.reset();
+    exe.reset();
+    bridge.reset();
+    gm_server.reset();
+    system_node.reset();
+    client_node.reset();
   }
 
   /// @brief Spins the executor and advances the (simulated) EasyNav backend.
@@ -173,8 +201,6 @@ protected:
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
   }
-
-  bool initialized {false};
 
   std::shared_ptr<easynav::NavState> nav_state;
   rclcpp::Node::SharedPtr client_node;
