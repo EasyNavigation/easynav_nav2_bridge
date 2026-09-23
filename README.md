@@ -63,8 +63,11 @@ callback — the same timer-driven pattern used by other EasyNav clients (see
   `NavigateToPose::Feedback`.
 * **Success**: when EasyNav reports the goal as finished, the action
   succeeds with `error_code == NONE`.
-* **Failure / internal error**: reported as `ABORTED`, with `error_code ==
-  UNKNOWN` and `error_msg` carrying EasyNav's reason.
+* **Failure / internal error**: reported as `ABORTED`, with a non-`NONE`
+  `error_code`. EasyNav's textual reason is logged server-side (`RCLCPP_ERROR`)
+  rather than placed in the result, since not every `nav2_msgs` build declares
+  an `error_msg` field (message-only distributions may trim `NavigateToPose`
+  down to just `error_code`/`NONE`).
 * **Client-requested cancel**: a Nav2 cancel request is forwarded to EasyNav
   (`GoalManagerClient::cancel()`); once EasyNav confirms the cancellation the
   action reports `CANCELED`.

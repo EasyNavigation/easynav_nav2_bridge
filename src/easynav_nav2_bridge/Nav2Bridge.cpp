@@ -30,6 +30,13 @@ using namespace std::chrono_literals;
 namespace
 {
 
+// Numeric value of nav2_msgs' NavigateToPose::Result::UNKNOWN. Kept as a literal
+// rather than referencing the named constant because not every nav2_msgs build
+// declares it (e.g. message-only distributions trimmed down to just NONE=0);
+// the field itself (error_code) is common to both, only the named error codes
+// beyond NONE differ.
+constexpr uint16_t kUnknownErrorCode = 9000;
+
 /// @brief Convert EasyNav's latest feedback into a NavigateToPose feedback message.
 Nav2Bridge::NavigateToPose::Feedback::SharedPtr to_feedback(
   const easynav_interfaces::msg::NavigationControl & control)
@@ -91,9 +98,9 @@ Nav2Bridge::handle_accepted(const std::shared_ptr<GoalHandleNavigateToPose> goal
   // preemption (SENT_PREEMPT), so the previous action goal just needs to be
   // terminated at the Nav2 action level.
   if (current_goal_handle_ && current_goal_handle_->is_active()) {
+    RCLCPP_INFO(get_logger(), "Goal preempted by a new navigation request");
     auto preempted_result = std::make_shared<NavigateToPose::Result>();
-    preempted_result->error_code = NavigateToPose::Result::UNKNOWN;
-    preempted_result->error_msg = "Goal preempted by a new navigation request";
+    preempted_result->error_code = kUnknownErrorCode;
     try {
       current_goal_handle_->abort(preempted_result);
     } catch (const std::exception & e) {
@@ -156,7 +163,6 @@ Nav2Bridge::cycle()
     case GoalManagerClient::State::NAVIGATION_CANCELLED:
       {
         auto result = std::make_shared<NavigateToPose::Result>();
-        result->error_msg = gm_client_->get_result().status_message;
         if (canceling) {
           result->error_code = NavigateToPose::Result::NONE;
           current_goal_handle_->canceled(result);
@@ -164,10 +170,10 @@ Nav2Bridge::cycle()
           // Cancelled by someone other than this action client (e.g. another
           // GoalManagerClient): canceled() would be an illegal transition
           // here, since this goal handle was never put in CANCELING state.
-          result->error_code = NavigateToPose::Result::UNKNOWN;
-          if (result->error_msg.empty()) {
-            result->error_msg = "Navigation was cancelled by another client";
-          }
+          RCLCPP_WARN(
+            get_logger(), "Navigation was cancelled by another client: %s",
+            gm_client_->get_result().status_message.c_str());
+          result->error_code = kUnknownErrorCode;
           current_goal_handle_->abort(result);
         }
         gm_client_->reset();
@@ -179,9 +185,11 @@ Nav2Bridge::cycle()
     case GoalManagerClient::State::NAVIGATION_REJECTED:
     case GoalManagerClient::State::ERROR:
       {
+        RCLCPP_ERROR(
+          get_logger(), "Navigation ended with an error: %s",
+          gm_client_->get_result().status_message.c_str());
         auto result = std::make_shared<NavigateToPose::Result>();
-        result->error_code = NavigateToPose::Result::UNKNOWN;
-        result->error_msg = gm_client_->get_result().status_message;
+        result->error_code = kUnknownErrorCode;
         canceling ? current_goal_handle_->canceled(result) : current_goal_handle_->abort(result);
         gm_client_->reset();
         current_goal_handle_.reset();
