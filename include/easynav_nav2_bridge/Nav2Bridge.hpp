@@ -18,7 +18,10 @@
 #ifndef EASYNAV_NAV2_BRIDGE__NAV2BRIDGE_HPP_
 #define EASYNAV_NAV2_BRIDGE__NAV2BRIDGE_HPP_
 
+#include <cstdint>
 #include <memory>
+#include <type_traits>
+#include <utility>
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -29,6 +32,26 @@
 
 namespace easynav
 {
+
+/// nav2_msgs added error codes to NavigateToPose's result in Jazzy (Humble's is empty)
+template<class ResultT, class = void>
+struct has_error_code : std::false_type {};
+
+template<class ResultT>
+struct has_error_code<ResultT, std::void_t<decltype(std::declval<ResultT &>().error_code)>>
+  : std::true_type {};
+
+/// Sets @p result's error_code where the field exists (no-op on Humble)
+template<class ResultT>
+void set_error_code(ResultT & result, uint16_t code)
+{
+  if constexpr (has_error_code<ResultT>::value) {
+    result.error_code = code;
+  } else {
+    (void)result;
+    (void)code;
+  }
+}
 
 /**
  * @class Nav2Bridge

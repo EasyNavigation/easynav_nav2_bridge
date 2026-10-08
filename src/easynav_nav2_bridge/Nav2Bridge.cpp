@@ -36,6 +36,8 @@ namespace
 // the field itself (error_code) is common to both, only the named error codes
 // beyond NONE differ.
 constexpr uint16_t kUnknownErrorCode = 9000;
+// kNoErrorCode, also missing where the result has no error codes
+constexpr uint16_t kNoErrorCode = 0;
 
 /// @brief Convert EasyNav's latest feedback into a NavigateToPose feedback message.
 Nav2Bridge::NavigateToPose::Feedback::SharedPtr to_feedback(
@@ -58,7 +60,9 @@ Nav2Bridge::Nav2Bridge(const rclcpp::NodeOptions & options)
   const auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
     std::chrono::duration<double>(1.0 / feedback_rate_hz));
 
-  timer_ = create_timer(period, std::bind(&Nav2Bridge::cycle, this));
+  // Free function: Node::create_timer does not exist in Humble
+  timer_ = rclcpp::create_timer(
+    this, get_clock(), rclcpp::Duration(period), std::bind(&Nav2Bridge::cycle, this));
 }
 
 void
@@ -100,7 +104,7 @@ Nav2Bridge::handle_accepted(const std::shared_ptr<GoalHandleNavigateToPose> goal
   if (current_goal_handle_ && current_goal_handle_->is_active()) {
     RCLCPP_INFO(get_logger(), "Goal preempted by a new navigation request");
     auto preempted_result = std::make_shared<NavigateToPose::Result>();
-    preempted_result->error_code = kUnknownErrorCode;
+    set_error_code(*preempted_result, kUnknownErrorCode);
     try {
       current_goal_handle_->abort(preempted_result);
     } catch (const std::exception & e) {
@@ -152,7 +156,7 @@ Nav2Bridge::cycle()
     case GoalManagerClient::State::NAVIGATION_FINISHED:
       {
         auto result = std::make_shared<NavigateToPose::Result>();
-        result->error_code = NavigateToPose::Result::NONE;
+        set_error_code(*result, kNoErrorCode);
         // succeed() is not a legal transition once the goal is CANCELING.
         canceling ? current_goal_handle_->canceled(result) : current_goal_handle_->succeed(result);
         gm_client_->reset();
@@ -164,7 +168,7 @@ Nav2Bridge::cycle()
       {
         auto result = std::make_shared<NavigateToPose::Result>();
         if (canceling) {
-          result->error_code = NavigateToPose::Result::NONE;
+          set_error_code(*result, kNoErrorCode);
           current_goal_handle_->canceled(result);
         } else {
           // Cancelled by someone other than this action client (e.g. another
@@ -173,7 +177,7 @@ Nav2Bridge::cycle()
           RCLCPP_WARN(
             get_logger(), "Navigation was cancelled by another client: %s",
             gm_client_->get_result().status_message.c_str());
-          result->error_code = kUnknownErrorCode;
+          set_error_code(*result, kUnknownErrorCode);
           current_goal_handle_->abort(result);
         }
         gm_client_->reset();
@@ -189,7 +193,7 @@ Nav2Bridge::cycle()
           get_logger(), "Navigation ended with an error: %s",
           gm_client_->get_result().status_message.c_str());
         auto result = std::make_shared<NavigateToPose::Result>();
-        result->error_code = kUnknownErrorCode;
+        set_error_code(*result, kUnknownErrorCode);
         canceling ? current_goal_handle_->canceled(result) : current_goal_handle_->abort(result);
         gm_client_->reset();
         current_goal_handle_.reset();

@@ -46,6 +46,19 @@ namespace
 // declares a named UNKNOWN error code (some message-only distributions only
 // define NONE=0), so tests check the bridge's actual numeric contract instead.
 constexpr uint16_t kUnknownErrorCode = 9000;
+constexpr uint16_t kNoErrorCode = 0;
+
+// Humble's NavigateToPose result has no error_code: there only the result code is checked
+template<class ResultT>
+void expect_error_code(const ResultT & result, uint16_t expected)
+{
+  if constexpr (easynav::has_error_code<ResultT>::value) {
+    EXPECT_EQ(result.error_code, expected);
+  } else {
+    (void)result;
+    (void)expected;
+  }
+}
 
 /// @brief Collects everything a NavigateToPose action client observes for one goal.
 struct GoalTracking
@@ -229,7 +242,7 @@ TEST_F(Nav2BridgeTestCase, normal_navigation_succeeds)
 
   ASSERT_TRUE(tracking->result_received);
   ASSERT_EQ(tracking->result_code, rclcpp_action::ResultCode::SUCCEEDED);
-  ASSERT_EQ(tracking->result->error_code, NavigateToPose::Result::NONE);
+  expect_error_code(*tracking->result, kNoErrorCode);
   ASSERT_EQ(gm_server->get_state(), easynav::GoalManager::State::IDLE);
 }
 
@@ -247,7 +260,7 @@ TEST_F(Nav2BridgeTestCase, navigation_failure_is_reported_as_aborted)
 
   ASSERT_TRUE(tracking->result_received);
   ASSERT_EQ(tracking->result_code, rclcpp_action::ResultCode::ABORTED);
-  ASSERT_EQ(tracking->result->error_code, kUnknownErrorCode);
+  expect_error_code(*tracking->result, kUnknownErrorCode);
 }
 
 TEST_F(Nav2BridgeTestCase, navigation_error_is_reported_as_aborted)
@@ -264,7 +277,7 @@ TEST_F(Nav2BridgeTestCase, navigation_error_is_reported_as_aborted)
 
   ASSERT_TRUE(tracking->result_received);
   ASSERT_EQ(tracking->result_code, rclcpp_action::ResultCode::ABORTED);
-  ASSERT_EQ(tracking->result->error_code, kUnknownErrorCode);
+  expect_error_code(*tracking->result, kUnknownErrorCode);
 }
 
 TEST_F(Nav2BridgeTestCase, client_requested_cancel_is_forwarded_to_easynav)
@@ -349,7 +362,7 @@ TEST_F(Nav2BridgeTestCase, external_preemption_is_reported_as_aborted_not_cancel
 
   ASSERT_TRUE(tracking->result_received);
   ASSERT_EQ(tracking->result_code, rclcpp_action::ResultCode::ABORTED);
-  ASSERT_EQ(tracking->result->error_code, kUnknownErrorCode);
+  expect_error_code(*tracking->result, kUnknownErrorCode);
 }
 
 TEST_F(Nav2BridgeTestCase, sequential_goals_after_success_are_independent)
